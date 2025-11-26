@@ -23,12 +23,13 @@ export default function DashboardDeviceStats() {
 
   useEffect(() => {
     if (!token) return;
+    const abortController = new AbortController();
+    let isMounted = true;
     const load = async () => {
       try {
         setLoading(true);
         // 1. Get first switch
         const switches = await fetchSwitches(token);
-        console.log("[DashboardDeviceStats] Fetched switches:", switches);
         
         // handle paginated or array response
         let devices: NetworkDeviceDetails[] = [];
@@ -39,10 +40,8 @@ export default function DashboardDeviceStats() {
           devices = Array.isArray(results) ? results : [];
         }
 
-        console.log("[DashboardDeviceStats] Found devices:", devices.length);
-
         if (devices.length === 0) {
-          console.warn("[DashboardDeviceStats] No devices found");
+          if (!isMounted) return;
           setDevice(null);
           setData([]);
           return;
@@ -52,60 +51,60 @@ export default function DashboardDeviceStats() {
         let foundDeviceWithData = false;
         for (const device of devices) {
           if (!device.lan_ip_address) {
-            console.log("[DashboardDeviceStats] Skipping device without lan_ip_address:", device);
             continue;
           }
-
-          console.log("[DashboardDeviceStats] Trying device:", device.lan_ip_address);
           
           try {
             const stats = await fetchDeviceStatsAggregate(
               token,
               device.lan_ip_address,
               1, // 1 hour
-              "1 minute"
+              "1 minute",
+              abortController.signal
             );
             
-            console.log(
-              `[DashboardDeviceStats] Stats for ${device.lan_ip_address}:`,
-              stats?.data?.length || 0,
-              "data points"
-            );
-
             if (stats && stats.data && Array.isArray(stats.data) && stats.data.length > 0) {
-              console.log("[DashboardDeviceStats] Found device with data:", device.lan_ip_address);
-              console.log("[DashboardDeviceStats] Sample data point:", stats.data[0]);
+              if (!isMounted) return;
               setDevice(device);
               setData(stats.data);
               foundDeviceWithData = true;
               break;
             }
           } catch (statsError) {
+            if (abortController.signal.aborted) return;
             console.error(`[DashboardDeviceStats] Error fetching stats for ${device.lan_ip_address}:`, statsError);
             continue;
           }
         }
 
         if (!foundDeviceWithData) {
-          console.warn("[DashboardDeviceStats] No devices with stats data found");
           // Still set the first device so we can show which device we checked
+          if (!isMounted) return;
           setDevice(devices[0]);
           setData([]);
         }
       } catch (e) {
+        if (abortController.signal.aborted) return;
         console.error("Failed to load device stats for dashboard", e);
         if (e instanceof Error) {
           console.error("Error details:", e.message, e.stack);
         }
+        if (!isMounted) return;
         setData([]);
       } finally {
-        setLoading(false);
+        if (isMounted) {
+          setLoading(false);
+        }
       }
     };
     load();
     // Refresh every minute like the other charts
     const interval = setInterval(load, 60000);
-    return () => clearInterval(interval);
+    return () => {
+      isMounted = false;
+      abortController.abort();
+      clearInterval(interval);
+    };
   }, [token]);
 
   if (loading) {
