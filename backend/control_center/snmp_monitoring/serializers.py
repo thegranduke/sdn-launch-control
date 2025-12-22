@@ -203,11 +203,11 @@ class SNMPInterfaceStatsSerializer(serializers.ModelSerializer):
 class SNMPDeviceAlertSerializer(serializers.ModelSerializer):
     """
     Serializer for SNMPDeviceAlert model.
-    
+
     Read-only serializer for viewing alert timestamps.
     """
     device_name = serializers.CharField(source='device.name', read_only=True)
-    
+
     class Meta:
         model = SNMPDeviceAlert
         fields = (
@@ -221,3 +221,4 @@ class SNMPDeviceAlertSerializer(serializers.ModelSerializer):
             'last_connection_failure_alert',
         )
         read_only_fields = fields
+
